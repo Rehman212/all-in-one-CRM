@@ -6,6 +6,8 @@ import { SmtpService } from '../smtp/smtp.service';
 
 @Injectable()
 export class InboxService {
+  private syncing = false;
+
   constructor(
     private prisma: PrismaService,
     private smtp: SmtpService,
@@ -27,6 +29,13 @@ export class InboxService {
       return { ...row, seen: true };
     }
     return row;
+  }
+
+  async remove(id: number) {
+    await this.prisma.inboxMessage.delete({ where: { id } }).catch(() => {
+      throw new NotFoundException('Message not found');
+    });
+    return { ok: true };
   }
 
   async saveImap(data: { imapHost: string; imapPort: number; imapUser: string; imapPassword?: string }) {
@@ -65,6 +74,19 @@ export class InboxService {
   }
 
   async sync() {
+    if (this.syncing) {
+      const total = await this.prisma.inboxMessage.count();
+      return { imported: 0, total, bounced: 0, busy: true };
+    }
+    this.syncing = true;
+    try {
+      return await this.syncInner();
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  private async syncInner() {
     const row = await this.prisma.smtpSetting.findFirst();
     if (!row?.imapPassword || !row.imapUser) {
       throw new BadRequestException('Inbox ke liye Hostinger IMAP save karo: Deliverability page.');
@@ -79,6 +101,7 @@ export class InboxService {
     await client.connect();
     const lock = await client.getMailboxLock('INBOX');
     let imported = 0;
+    const fresh: { from: string; subject: string }[] = [];
     try {
       const uids = await client.search({ all: true }, { uid: true });
       const slice = (uids || []).slice(-80);
@@ -114,14 +137,37 @@ export class InboxService {
           },
         });
         imported += 1;
+        const fromAddr = (from?.address || '').toLowerCase();
+        if (!fromAddr.includes('amazonses.com') && !/mailer-daemon/i.test(from?.name || '')) {
+          fresh.push({
+            from: from?.name ? `${from.name} <${from.address}>` : from?.address || 'unknown',
+            subject: parsed.subject || '(no subject)',
+          });
+        }
       }
     } finally {
       lock.release();
       await client.logout().catch(() => {});
     }
     const bounced = await this.applyBounces();
+    if (fresh.length) {
+      await this.sendAlert(fresh).catch(() => {});
+    }
     const total = await this.prisma.inboxMessage.count();
-    return { imported, total, bounced };
+    return { imported, total, bounced, alerted: fresh.length };
+  }
+
+  private async sendAlert(fresh: { from: string; subject: string }[]) {
+    const to = (process.env.ALERT_EMAIL || 'rehmanwebs@gmail.com').trim();
+    const rows = fresh
+      .slice(0, 20)
+      .map((m) => `<li><b>${m.from}</b> — ${m.subject}</li>`)
+      .join('');
+    await this.smtp.sendHtml(
+      to,
+      `SV Mailer: ${fresh.length} new email(s) on hello@`,
+      `<p>New mail in Social Velocityy inbox.</p><ul>${rows}</ul><p>Open the Mailer Inbox to read/reply.</p>`,
+    );
   }
 
   async applyBounces() {

@@ -82,10 +82,8 @@ export default function InboxPage() {
   useEffect(() => {
     if (!configured) return;
     const t = setInterval(() => {
-      api<{ imported: number }>("/inbox/sync", { method: "POST" })
-        .then(() => loadList())
-        .catch(() => {});
-    }, 25000);
+      loadList().catch(() => {});
+    }, 8000);
     return () => clearInterval(t);
   }, [configured]);
 
@@ -99,6 +97,14 @@ export default function InboxPage() {
     setOpen(full);
     setReply("");
     setRows((list) => list.map((r) => (r.id === id ? { ...r, seen: true } : r)));
+  }
+
+  async function deleteMsg(id: number) {
+    if (!confirm("Is mail ko app inbox se hataein?")) return;
+    await api(`/inbox/${id}`, { method: "DELETE" });
+    if (open?.id === id) setOpen(null);
+    setRows((list) => list.filter((r) => r.id !== id));
+    setMsg("Deleted from this inbox (Hostinger mailbox mein reh sakti hai).");
   }
 
   async function sendReply() {
@@ -197,6 +203,9 @@ export default function InboxPage() {
                         : `${open.fromEmail} · ${new Date(open.receivedAt).toLocaleString()}`}
                     </div>
                   </div>
+                  <button className="secondary sm" type="button" style={{ marginLeft: "auto" }} onClick={() => deleteMsg(open.id)}>
+                    Delete
+                  </button>
                 </div>
               </div>
               <div className="mail-body">
