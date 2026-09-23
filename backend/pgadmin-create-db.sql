@@ -1,0 +1,1 @@
+CREATE DATABASE sv_mailer;

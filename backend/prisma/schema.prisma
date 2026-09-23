@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("Admin")
+  createdAt    DateTime @default(now())
+}
+
+model SmtpSetting {
+  id       Int    @id @default(autoincrement())
+  host     String @default("email-smtp.ap-south-1.amazonaws.com")
+  port     Int    @default(587)
+  username String @default("")
+  password String @default("")
+  fromEmail String @default("hello@socialvelocityy.com")
+  fromName  String @default("Social Velocityy")
+  imapHost     String @default("imap.hostinger.com")
+  imapPort     Int    @default(993)
+  imapUser     String @default("hello@socialvelocityy.com")
+  imapPassword String @default("")
+}
+
+model InboxMessage {
+  id          Int      @id @default(autoincrement())
+  messageId   String   @unique
+  fromEmail   String
+  fromName    String   @default("")
+  toEmail     String   @default("")
+  subject     String   @default("(no subject)")
+  textBody    String   @default("")
+  htmlBody    String   @default("")
+  receivedAt  DateTime
+  seen        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model ContactList {
+  id        Int       @id @default(autoincrement())
+  name      String
+  createdAt DateTime  @default(now())
+  contacts  Contact[]
+  campaigns Campaign[]
+}
+
+model Contact {
+  id             Int          @id @default(autoincrement())
+  email          String
+  name           String       @default("")
+  unsubscribed   Boolean      @default(false)
+  listId         Int
+  list           ContactList  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  sends          CampaignSend[]
+
+  @@unique([listId, email])
+}
+
+model Campaign {
+  id        Int          @id @default(autoincrement())
+  name      String
+  subject   String
+  htmlBody  String
+  status    String       @default("draft")
+  listId    Int
+  list      ContactList  @relation(fields: [listId], references: [id])
+  createdAt DateTime     @default(now())
+  sentAt    DateTime?
+  sends     CampaignSend[]
+}
+
+model CampaignSend {
+  id         Int      @id @default(autoincrement())
+  campaignId Int
+  contactId  Int
+  status     String
+  error      String?
+  sentAt     DateTime @default(now())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
+
+model EmailTemplate {
+  id        Int      @id @default(autoincrement())
+  name      String
+  html      String
+  createdAt DateTime @default(now())
+}
