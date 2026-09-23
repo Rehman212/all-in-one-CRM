@@ -1,8 +1,13 @@
 function apiBase() {
+  const fromEnv = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
   if (typeof window !== "undefined") {
-    return `http://${window.location.hostname}:4000/api`;
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return `http://${host}:4000/api`;
+    }
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  return "http://localhost:4000/api";
 }
 
 export function getToken() {
@@ -21,7 +26,9 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   try {
     res = await fetch(`${apiBase()}${path}`, { ...options, headers });
   } catch {
-    throw new Error("Backend nahi mil raha. Confirm karo: API http://localhost:4000 chal rahi ho.");
+    throw new Error(
+      `Backend nahi mil raha. API check karo: ${apiBase()} (local pe Nest :4000 chal rahi ho).`,
+    );
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
